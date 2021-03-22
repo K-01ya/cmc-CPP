@@ -17,7 +17,7 @@ class Person {
     int get_weight() const {
         return weight;
     }
-    char* get_name() const {
+    const char* get_name() const {
         return name;
     }
     static int get_people_number () {
