@@ -5,15 +5,13 @@
 class Person {
   public:
     explicit Person(const char *_name = "Unknown", int weight = -1) : weight(weight) {
-        name = new char [strlen(_name)];
-        for (size_t i = 0; i < strlen(_name); ++i)
-            name[i] = _name[i];
+        name = new char [strlen(_name) + 1];
+        stpcpy(name, _name);
         ++people_number;
     }
     Person(const Person &person) : weight(person.weight) {
-        name = new char [sizeof(person.name)];
-        for (size_t i = 0; i < sizeof(person.name); ++i)
-            name[i] = person.name[i];
+        name = new char [strlen(person.name) + 1];
+        strcpy(name, person.name);
         ++people_number;
     }
     int get_weight() const {
@@ -30,9 +28,8 @@ class Person {
             return *this;
         weight = person.weight;
         delete[] name;
-        name = new char[sizeof(person.name)];
-        for (size_t i = 0; i < sizeof(person.name); ++i)
-            name[i] = person.name[i];
+        name = new char[strlen(person.name) + 1];
+        strcpy(name, person.name);
         return *this;
     }
     int& operator()(const int _weight) {
@@ -40,10 +37,12 @@ class Person {
         return weight;
     }
     friend std::ostream& operator<<(std::ostream& stream, const Person &person);
-    ~Person() {
+    ~Person(){
         delete[] name;
-    }
-  private:
+    };
+    virtual void do_work() const = 0;
+
+  protected:
     char *name;
     int weight;
     static int people_number;
@@ -55,14 +54,26 @@ std::ostream& operator<<(std::ostream& stream, const Person &person) {
     return stream;
 }
 
+
+class Student : public Person {
+  public:
+    explicit Student(const char *_name = "Unknown", int weight = -1) : Person(_name, weight) {};
+    void do_work() const override {
+        std::cout << this -> get_name() << " is studying\n";
+    }
+
+};
+
+
 int main() {
-    Person x ("Vasya", 4);
-    Person y ("Kolya", 15);
-    Person z = x;
+    Student x ("Vasya", 4);
+    Student y ("Kolya", 15);
+    Student z = x;
     x = y;
     x = x;
-    std::cout << x << '\n' << z << '\n';
+    std::cout << y << '\n' << z << '\n';
     std::cout << x.get_name() << " " << Person::get_people_number()<< '\n';
     std::cout << z(20) << '\n';
     std::cout << x.get_weight() << '\n' << z.get_weight() << '\n';
+    x.do_work();
 }
