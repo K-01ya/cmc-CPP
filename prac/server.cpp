@@ -1,6 +1,7 @@
 #include <iostream>
 #include <netinet/in.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <sys/socket.h>
 #include <string>
 #include <vector>
@@ -10,6 +11,7 @@
 #include <fstream>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <string.h>
 
 class SocketAddress {
   private:
@@ -128,12 +130,7 @@ std::vector<uint8_t > Read(int fd) {
     return arr;
 }
 
-void ProcessConnection(int cd, const SocketAddress& clAddr) {
-    ConnectedSocket cs(cd);
-    std::string request;
-    cs.Read(request);
-    std::vector<std::string> lines = SplitLines(request);
-    std::string path = parseSpace(lines[0]);
+void commonHandler(std::string path, ConnectedSocket cs) {
     std::cout << path << "\n";
     path = "index" + path;
     int fd;
@@ -152,6 +149,10 @@ void ProcessConnection(int cd, const SocketAddress& clAddr) {
     }
     std::vector<uint8_t> arr = Read(fd);
     std::string str = "\r\nVersion: HTTP/1.1\r\nContent-length: " + std::to_string(arr.size()) + "\r\n\r\n";
+    //std::cout << str << "\n";
+    //for (int i = 0; i < arr.size(); ++i) {
+    //    std::cout << arr[i];
+    //}
 
     cs.Write(str);
     cs.Write(arr);
@@ -159,8 +160,73 @@ void ProcessConnection(int cd, const SocketAddress& clAddr) {
     cs.Shutdown();
 }
 
+void cgiHandler(std::string path, ConnectedSocket cs) {
+    std::string fileName = path.substr(1, path.find('?') - 1);
+    //std::cout << fileName;
+    std::cout << "File name: " << fileName << "\n" << path << "\n";
+    int fd;
+    pid_t pid = fork();
+    if (pid < 0)
+        std::cerr << "fork error";
+    if (pid == 0) {
+        fd = open("temp.txt", O_WRONLY | O_CREAT | O_TRUNC, 0666);
+        if (fd == -1)
+            std::cerr << "file open error";
+        else {
+            dup2(fd, 1);
+            close(fd);
+            char *argv[] = {(char *) fileName.c_str(), NULL};
+            char **env = new char *[3];
+            env[0] = new char[16 + path.size()];
+            path = path.substr(path.find('?') + 1, path.size());
+            strcpy(env[0], "QUERY_STRING=");
+            strcat(env[0], path.c_str());
+            env[1] = new char[22];
+            strcpy(env[1], "REMOTE_ADDR=127.0.0.1");
+            env[2] = NULL;
+            execve(fileName.c_str(), argv, env);
+        }
+    }
+    else {
+        int status;
+        wait(&status);
+        if(WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+            fd = open("temp.txt", O_RDONLY);
+            std::vector <uint8_t> arr = Read(fd);
+            cs.Write("HTTP/1.0 200 OK");
+            std::string str = "\r\nVersion: HTTP/1.1\r\nContent-type: text/html\r\nContent-length: " + std::to_string(arr.size()) + "\r\n\r\n";
+            std::cout << str << "\n";
+            for (int i = 0; i < arr.size(); ++i) {
+                std::cout << arr[i];
+            }
+            cs.Write(str);
+            cs.Write(arr);
+            cs.Shutdown();
+            close(fd);
+        }
+    }
+
+}
+
+void ProcessConnection(int cd, const SocketAddress& clAddr) {
+    ConnectedSocket cs(cd);
+    std::string request;
+    cs.Read(request);
+    std::vector<std::string> lines = SplitLines(request);
+
+    //for (const auto & line : lines) { //client request
+      //  std::cout << line << "\n";
+    //}
+
+    std::string path = parseSpace(lines[0]);
+    if (path.find('?') == -1)
+        commonHandler(path, cs);
+    else
+        cgiHandler(path, cs);
+}
+
 void ServerLoop() {
-    SocketAddress serverAddr("127.0.0.1", 1234);
+    SocketAddress serverAddr("127.0.0.1", 2234);
     ServerSocket ss;
     ss.Bind(serverAddr);
     ss.Listen(5);
