@@ -176,15 +176,22 @@ void cgiHandler(std::string path, ConnectedSocket cs) {
             dup2(fd, 1);
             close(fd);
             char *argv[] = {(char *) fileName.c_str(), NULL};
-            char **env = new char *[3];
-            env[0] = new char[16 + path.size()];
             path = path.substr(path.find('?') + 1, path.size());
-            strcpy(env[0], "QUERY_STRING=");
-            strcat(env[0], path.c_str());
-            env[1] = new char[22];
-            strcpy(env[1], "REMOTE_ADDR=127.0.0.1");
-            env[2] = NULL;
-            execve(fileName.c_str(), argv, env);
+            setenv("QUERY_STRING", path.c_str(), 1);
+            setenv("REMOTE_ADDR", "127.0.0.1", 1);
+            execve(fileName.c_str(), argv, environ);
+
+            std::cout << "ERROR\n";
+            cs.Write("HTTP/1.0 501 Not Implemented");
+            fd = open("index/501.html", O_RDONLY);
+            std::cerr << "CGI is not found \n";
+            std::vector<uint8_t> arr = Read(fd);
+            std::string str = "\r\nVersion: HTTP/1.1\r\nContent-length: " + std::to_string(arr.size()) + "\r\n\r\n";
+            cs.Write(str);
+            cs.Write(arr);
+            cs.Shutdown();
+            close(fd);
+            kill(getpid(), SIGKILL);
         }
     }
     else {
@@ -226,7 +233,7 @@ void ProcessConnection(int cd, const SocketAddress& clAddr) {
 }
 
 void ServerLoop() {
-    SocketAddress serverAddr("127.0.0.1", 2234);
+    SocketAddress serverAddr("127.0.0.1", 7234);
     ServerSocket ss;
     ss.Bind(serverAddr);
     ss.Listen(5);
